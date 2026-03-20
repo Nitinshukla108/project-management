@@ -67,6 +67,8 @@ import prisma from "../configs/prisma.js";
 export const inngest = new Inngest({ id: "project-management" });
 
 
+
+
 //  CREATE USER (FIXED)
 const syncUserCreation = inngest.createFunction(
   { id: "sync-user-from-clerk" },
