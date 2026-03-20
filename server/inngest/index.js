@@ -3,16 +3,18 @@ import prisma from "../configs/prisma.js";
 
 export const inngest = new Inngest({ id: "project-management" });
 
-// Sync User Creation - Using UPSERT to handle race conditions
+// 1. CREATE/UPDATE (Combined Logic)
 export const syncUserCreation = inngest.createFunction(
   { id: "sync-user-from-clerk" },
   { event: "clerk/user.created" },
   async ({ event }) => {
     const { data } = event;
-    const email = data?.email_addresses[0]?.email_address;
-    const name = `${data?.first_name || ""} ${data?.last_name || ""}`.trim();
+    const email = data?.email_addresses?.[0]?.email_address;
+    const name = `${data?.first_name || ""} ${data?.last_name || ""}`.trim() || "Unknown User";
 
-    await prisma.user.upsert({
+    // UPSERT is the key. It checks if ID exists. 
+    // If yes -> Update. If no -> Create.
+    return await prisma.user.upsert({
       where: { id: data.id },
       update: {
         email: email,
@@ -29,29 +31,31 @@ export const syncUserCreation = inngest.createFunction(
   }
 );
 
-// Sync User Deletion - Using deleteMany to avoid "record not found" errors
+// 2. DELETE (Safe Logic)
 export const syncUserDeletion = inngest.createFunction(
   { id: "delete-user-from-clerk" },
   { event: "clerk/user.deleted" },
   async ({ event }) => {
     const { data } = event;
 
-    await prisma.user.deleteMany({
+    // deleteMany does NOT throw an error if the user is already gone.
+    // .delete() WILL throw an error and make the Inngest run fail.
+    return await prisma.user.deleteMany({
       where: { id: data.id },
     });
   }
 );
 
-// Sync User Updation - Using UPSERT as a safety net
+// 3. UPDATE (Safety Net)
 export const syncUserUpdation = inngest.createFunction(
   { id: "update-user-from-clerk" },
   { event: "clerk/user.updated" },
   async ({ event }) => {
     const { data } = event;
-    const email = data?.email_addresses[0]?.email_address;
+    const email = data?.email_addresses?.[0]?.email_address;
     const name = `${data?.first_name || ""} ${data?.last_name || ""}`.trim();
 
-    await prisma.user.upsert({
+    return await prisma.user.upsert({
       where: { id: data.id },
       update: {
         email: email,
